@@ -1,12 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send } from 'lucide-react';
+import { MessageSquare, X, Send, Loader2 } from 'lucide-react';
+import { GoogleGenAI } from '@google/genai';
+
+// Note: Storing API keys in Vite frontend is insecure for production.
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
 export default function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { text: "Hi! I'm AION's virtual assistant. How can I help you scale today?", sender: 'bot' }
+    { text: "Hi! I'm AION's intelligent virtual assistant, powered by Google Gemini. How can I help you scale today?", sender: 'bot' }
   ]);
   const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -17,20 +22,44 @@ export default function Chatbot() {
     scrollToBottom();
   }, [messages, isOpen]);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
     
-    // Add user message
-    setMessages(prev => [...prev, { text: input, sender: 'user' }]);
+    const userMessage = input.trim();
+    setMessages(prev => [...prev, { text: userMessage, sender: 'user' }]);
     setInput('');
+    setIsLoading(true);
 
-    // Simulate bot response
-    setTimeout(() => {
+    if (!apiKey) {
+      setTimeout(() => {
+        setMessages(prev => [...prev, { text: "⚠️ API Key is missing. Please add VITE_GEMINI_API_KEY to your .env file.", sender: 'bot' }]);
+        setIsLoading(false);
+      }, 500);
+      return;
+    }
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: apiKey });
+      
+      // We pass the full conversation history to give the AI context.
+      const historyText = messages.map(m => `${m.sender === 'bot' ? 'Assistant' : 'User'}: ${m.text}`).join('\n');
+      const prompt = `You are an AI assistant for a digital marketing agency named AION. Keep responses concise, professional, and helpful.\n\nConversation so far:\n${historyText}\nUser: ${userMessage}\nAssistant:`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt
+      });
+
       setMessages(prev => [...prev, { 
-        text: "Thanks for reaching out! Since this is a demo, I can't book a meeting right now, but feel free to use the contact form on this page.", 
+        text: response.text || "I'm sorry, I couldn't understand that.", 
         sender: 'bot' 
       }]);
-    }, 1000);
+    } catch (error) {
+      console.error(error);
+      setMessages(prev => [...prev, { text: "Sorry, I'm having trouble connecting to my AI brain right now.", sender: 'bot' }]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
